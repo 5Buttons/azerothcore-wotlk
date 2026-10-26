@@ -400,6 +400,15 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
             return;
     }
 
+    // while riding a vehicle, all threat goes to the vehicle, not the pilot
+    if (Unit* vehicle = target->GetVehicleBase())
+    {
+        AddThreat(vehicle, amount, spell, ignoreModifiers, ignoreRedirects);
+        if (target->HasUnitTypeMask(UNIT_MASK_ACCESSORY)) // accessories are fully treated as components of the parent and cannot have threat
+            return;
+        amount = 0.0f;
+    }
+
     // if we cannot actually have a threat list, we instead just set combat state and avoid creating threat refs altogether
     if (!CanHaveThreatList())
     {
@@ -417,6 +426,14 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
     // apply threat modifiers to the amount
     if (!ignoreModifiers)
         amount = CalculateModifiedThreat(amount, target, spell);
+
+    // the owner's AI sees the threat once, before any of it is redirected; the redirected shares are not reported again
+    if (!ignoreRedirects)
+    {
+        if (Creature* creatureOwner = _owner->ToCreature())
+            if (creatureOwner->IsAIEnabled)
+                creatureOwner->AI()->CalculateThreat(target, amount, spell);
+    }
 
     // if we're increasing threat, send some/all of it to redirection targets instead if applicable
     if (!ignoreRedirects && amount > 0.0f)
